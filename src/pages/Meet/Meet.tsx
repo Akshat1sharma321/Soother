@@ -27,6 +27,7 @@ import DateRangeIcon from "@mui/icons-material/DateRange";
 import ForumIcon from "@mui/icons-material/Forum";
 import VolunteerActivismIcon from "@mui/icons-material/VolunteerActivism";
 import { styled } from "@mui/material/styles";
+import NearbySupport from "../../components/NearbySupport/NearbySupport";
 
 const supportGroups = [
   {
@@ -168,10 +169,14 @@ const Meet: React.FC = () => {
       </Box>
 
       <Container maxWidth="lg">
+        <NearbySupport />
+
+        <Divider sx={{ my: 6 }} />
+
         <Box sx={{ mb: 8 }}>
           <Typography variant="h4" component="h2" gutterBottom>
             <GroupsIcon sx={{ verticalAlign: "middle", mr: 1 }} />
-            Support Groups
+            Online Support Communities
           </Typography>
           <Typography variant="body1" paragraph sx={{ mb: 4 }}>
             Join a support group to connect with others who understand what

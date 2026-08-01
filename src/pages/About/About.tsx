@@ -30,7 +30,7 @@ const About: React.FC = () => {
   const teamMembers = [
     {
       name: "Akshat Sharma",
-      role: "Founder & Developer",
+      role: "Developer",
       bio: "Software engineer passionate about creating technology that makes mental health support more accessible to everyone.",
       avatar: akshatPhoto,
     },

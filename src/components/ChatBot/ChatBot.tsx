@@ -20,6 +20,11 @@ import FaceIcon from "@mui/icons-material/Face";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import DeleteIcon from "@mui/icons-material/Delete";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import {
+  getAIResponse,
+  isGroqConfigured,
+  ChatTurn,
+} from "../../services/groqService";
 
 interface Message {
   text: string;
@@ -89,7 +94,7 @@ const moodSwingResponses = {
   ],
 
   resources: [
-    "For immediate support, the Crisis Text Line (text HOME to 741741) is available 24/7. The National Suicide Prevention Lifeline (1-800-273-8255) is also always available.",
+    "For immediate support in India, call Tele-MANAS at 14416 or AASRA at +91-9820466726 — both are available 24/7. In the US, the Crisis Text Line (text HOME to 741741) and the 988 Suicide & Crisis Lifeline are always available.",
     "The Soother app offers meditation exercises, calming music playlists, and mood-lifting memes that might help right now.",
     "Sometimes professional support is helpful. Would you like information about finding a therapist or counselor?",
   ],
@@ -175,6 +180,28 @@ const getResponse = (category: keyof typeof moodSwingResponses): string => {
   return responses[randomIndex];
 };
 
+// Safety layer: crisis messages always get a deterministic, verified response
+// with real helpline numbers — they are never routed through the LLM.
+const crisisKeywords = [
+  "suicide",
+  "suicidal",
+  "kill myself",
+  "end my life",
+  "want to die",
+  "self harm",
+  "self-harm",
+  "hurt myself",
+  "end it all",
+];
+
+const isCrisisMessage = (input: string): boolean => {
+  const lowered = input.toLowerCase();
+  return crisisKeywords.some((keyword) => lowered.includes(keyword));
+};
+
+const CRISIS_RESPONSE =
+  "I'm really glad you told me, and I'm concerned about you. You deserve immediate, real support from a person. Please reach out right now: in India, call Tele-MANAS at 14416 or AASRA at +91-9820466726 (both 24/7). In the US, call or text 988, or text HOME to 741741. If you are in immediate danger, please call your local emergency number. You are not alone in this.";
+
 const quickSuggestions = [
   "I'm feeling sad",
   "I'm anxious today",
@@ -195,34 +222,64 @@ const ChatBot: React.FC = () => {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  // AI mode is on when a Groq key is configured; drops to rule-based
+  // responses automatically if a request fails.
+  const [aiOnline, setAiOnline] = useState(isGroqConfigured());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSendMessage = () => {
+  const addBotMessage = (text: string) => {
+    setMessages((prev) => [
+      ...prev,
+      { text, sender: "bot", timestamp: new Date() },
+    ]);
+  };
+
+  const handleSendMessage = async () => {
     if (inputValue.trim() === "") return;
 
-    // Add user message
+    const text = inputValue.trim();
     const userMessage: Message = {
-      text: inputValue,
+      text,
       sender: "user",
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInputValue("");
-
-    // Show bot is typing
     setIsTyping(true);
 
-    // Determine response category
-    const category = getCategoryFromInput(inputValue);
+    // Crisis messages bypass the LLM entirely and get verified helplines.
+    if (isCrisisMessage(text)) {
+      setTimeout(() => {
+        addBotMessage(CRISIS_RESPONSE);
+        setIsTyping(false);
+      }, 600);
+      return;
+    }
 
-    // Simulate bot typing with random delay between 1-2 seconds
+    if (aiOnline) {
+      try {
+        const history: ChatTurn[] = updatedMessages.map((message) => ({
+          role: message.sender === "user" ? ("user" as const) : ("assistant" as const),
+          content: message.text,
+        }));
+        const reply = await getAIResponse(history);
+        addBotMessage(reply);
+        setIsTyping(false);
+        return;
+      } catch (error) {
+        console.error(
+          "Groq request failed, falling back to offline responses:",
+          error
+        );
+        setAiOnline(false);
+      }
+    }
+
+    // Rule-based fallback (no key configured or the API call failed)
+    const category = getCategoryFromInput(text);
     setTimeout(() => {
-      const botMessage: Message = {
-        text: getResponse(category),
-        sender: "bot",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, botMessage]);
+      addBotMessage(getResponse(category));
       setIsTyping(false);
     }, 1000 + Math.random() * 1000);
   };
@@ -302,6 +359,20 @@ const ChatBot: React.FC = () => {
             <SmartToyIcon fontSize="small" />
           </Avatar>
           <Typography variant="h6">Mood Support Bot</Typography>
+          <Tooltip
+            title={
+              aiOnline
+                ? "Responses are generated by an AI model (Groq / Llama 3.3)"
+                : "Using built-in supportive responses"
+            }
+          >
+            <Chip
+              size="small"
+              label={aiOnline ? "AI-powered" : "Offline mode"}
+              color={aiOnline ? "success" : "default"}
+              sx={{ ml: 1.5 }}
+            />
+          </Tooltip>
         </Box>
         <Tooltip title="Clear chat history">
           <IconButton onClick={clearChat} size="small">

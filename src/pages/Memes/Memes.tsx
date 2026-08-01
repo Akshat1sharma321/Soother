@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Typography,
   Box,
@@ -8,20 +8,23 @@ import {
   Chip,
   Stack,
   Pagination,
+  CircularProgress,
+  Alert,
   useTheme,
 } from "@mui/material";
 import EmojiEmotionsIcon from "@mui/icons-material/EmojiEmotions";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import MemeCard from "../../components/MemeCard/MemeCard";
 import { memeImages } from "./meme-images";
+import { fetchMemes, RedditMeme } from "../../services/memeService";
 
-// Sample meme data - in a real app, these would come from an API
-const memeData = [
+// Local memes shown only if the live meme API is unreachable.
+const fallbackMemes = [
   {
     id: 1,
     title: "When the sun finally comes out after a week of rain",
     imageUrl: memeImages.dog,
     altText: "Happy dog in sunlight",
-    category: "animals",
     description:
       "That feeling when you finally see sunshine after what feels like forever!",
   },
@@ -30,7 +33,6 @@ const memeData = [
     title: "Me trying to explain my job to my parents",
     imageUrl: memeImages.confused,
     altText: "Confused person with whiteboard",
-    category: "relatable",
     description:
       'No matter how many times I explain, they still think I "do something with computers".',
   },
@@ -39,7 +41,6 @@ const memeData = [
     title: "When someone compliments my cooking",
     imageUrl: memeImages.cat,
     altText: "Proud cat",
-    category: "animals",
     description:
       "I may have just heated up a frozen meal, but I'll take the praise!",
   },
@@ -48,7 +49,6 @@ const memeData = [
     title: "5-minute break turning into 2 hours",
     imageUrl: memeImages.sunset,
     altText: "Sunset signifying time passing",
-    category: "relatable",
     description: "Time is an illusion when you're procrastinating.",
   },
   {
@@ -56,7 +56,6 @@ const memeData = [
     title: "When your friend says they'll be ready in 5 minutes",
     imageUrl: memeImages.waiting,
     altText: "Person waiting",
-    category: "relatable",
     description: "And then you end up waiting for 45 minutes...",
   },
   {
@@ -64,62 +63,58 @@ const memeData = [
     title: "Plants when I water them vs when I don't",
     imageUrl: memeImages.plant,
     altText: "Drooping plant",
-    category: "plants",
     description: "They go from thriving to dramatic in 0.2 seconds.",
-  },
-  {
-    id: 7,
-    title: "That one mosquito in my room at 3 AM",
-    imageUrl: memeImages.night,
-    altText: "Night sky",
-    category: "relatable",
-    description: "The buzzing never stops!",
-  },
-  {
-    id: 8,
-    title: "When I finally understand what the professor was teaching",
-    imageUrl: memeImages.eureka,
-    altText: "Eureka moment",
-    category: "relatable",
-    description: "It all makes sense now... five minutes before the exam.",
-  },
-  {
-    id: 9,
-    title: "Walking past a mirror and catching your reflection",
-    imageUrl: memeImages.mirror,
-    altText: "Mirror reflection",
-    category: "relatable",
-    description: "Is that really what I look like today?",
   },
 ];
 
-const categories = ["all", "animals", "relatable", "plants"];
+// Each category maps to a subreddit the live API pulls from.
+const categories = [
+  { key: "wholesome", label: "Wholesome", subreddit: "wholesomememes" },
+  { key: "relatable", label: "Relatable", subreddit: "memes" },
+  { key: "animals", label: "Animals", subreddit: "AnimalsBeingDerps" },
+  { key: "programming", label: "Programming", subreddit: "ProgrammerHumor" },
+];
+
+const itemsPerPage = 6;
 
 const Memes: React.FC = () => {
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState(categories[0]);
+  const [memes, setMemes] = useState<RedditMeme[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [apiFailed, setApiFailed] = useState(false);
   const [page, setPage] = useState(1);
   const theme = useTheme();
-  const itemsPerPage = 3;
 
-  const filteredMemes =
-    selectedCategory === "all"
-      ? memeData
-      : memeData.filter((meme) => meme.category === selectedCategory);
+  const loadMemes = useCallback(async (subreddit: string) => {
+    setLoading(true);
+    setApiFailed(false);
+    setPage(1);
+    try {
+      const fresh = await fetchMemes(subreddit, 12);
+      if (fresh.length === 0) {
+        throw new Error("No memes returned");
+      }
+      setMemes(fresh);
+    } catch (error) {
+      console.error("Failed to fetch live memes:", error);
+      setApiFailed(true);
+      setMemes([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const pageCount = Math.ceil(filteredMemes.length / itemsPerPage);
-  const displayedMemes = filteredMemes.slice(
-    (page - 1) * itemsPerPage,
-    page * itemsPerPage
-  );
+  useEffect(() => {
+    loadMemes(selectedCategory.subreddit);
+  }, [selectedCategory, loadMemes]);
 
-  const handleCategoryChange = (category: string) => {
-    setSelectedCategory(category);
-    setPage(1); // Reset to first page when changing category
-  };
+  const liveMode = !apiFailed;
+  const totalItems = liveMode ? memes.length : fallbackMemes.length;
+  const pageCount = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (page - 1) * itemsPerPage;
 
   const handlePageChange = (_: React.ChangeEvent<unknown>, value: number) => {
     setPage(value);
-    // Scroll to top of meme section
     window.scrollTo({
       top: document.getElementById("memes-section")?.offsetTop || 0,
       behavior: "smooth",
@@ -158,8 +153,8 @@ const Memes: React.FC = () => {
             color="white"
             sx={{ maxWidth: 800, mx: "auto", mb: 4 }}
           >
-            Laughter is the best medicine. Enjoy our collection of memes that
-            are sure to bring a smile to your face.
+            Laughter is the best medicine. Fresh memes pulled live from Reddit,
+            sure to bring a smile to your face.
           </Typography>
         </Container>
       </Box>
@@ -185,9 +180,28 @@ const Memes: React.FC = () => {
         </Box>
 
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h5" component="h2" gutterBottom>
-            Browse Categories
-          </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 2,
+            }}
+          >
+            <Typography variant="h5" component="h2" gutterBottom>
+              Browse Categories
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<RefreshIcon />}
+              onClick={() => loadMemes(selectedCategory.subreddit)}
+              disabled={loading}
+            >
+              Fresh Memes
+            </Button>
+          </Box>
           <Stack
             direction="row"
             spacing={1}
@@ -195,32 +209,66 @@ const Memes: React.FC = () => {
           >
             {categories.map((category) => (
               <Chip
-                key={category}
-                label={category.charAt(0).toUpperCase() + category.slice(1)}
-                onClick={() => handleCategoryChange(category)}
-                color={selectedCategory === category ? "primary" : "default"}
-                variant={selectedCategory === category ? "filled" : "outlined"}
-                sx={{ textTransform: "capitalize" }}
+                key={category.key}
+                label={category.label}
+                onClick={() => setSelectedCategory(category)}
+                color={
+                  selectedCategory.key === category.key ? "primary" : "default"
+                }
+                variant={
+                  selectedCategory.key === category.key ? "filled" : "outlined"
+                }
+                disabled={loading}
               />
             ))}
           </Stack>
         </Box>
 
         <Box id="memes-section">
-          <Grid container spacing={4}>
-            {displayedMemes.map((meme) => (
-              <Grid item xs={12} md={4} key={meme.id}>
-                <MemeCard
-                  title={meme.title}
-                  imageUrl={meme.imageUrl}
-                  altText={meme.altText}
-                  description={meme.description}
-                />
-              </Grid>
-            ))}
-          </Grid>
+          {apiFailed && (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              Couldn&apos;t reach the live meme service right now — showing our
+              offline collection instead. Hit &quot;Fresh Memes&quot; to retry.
+            </Alert>
+          )}
 
-          {pageCount > 1 && (
+          {loading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Grid container spacing={4}>
+              {liveMode
+                ? memes
+                    .slice(startIndex, startIndex + itemsPerPage)
+                    .map((meme) => (
+                      <Grid item xs={12} md={4} key={meme.postLink}>
+                        <MemeCard
+                          title={meme.title}
+                          imageUrl={meme.url}
+                          altText={meme.title}
+                          description={`From r/${
+                            meme.subreddit
+                          } • ${meme.ups.toLocaleString()} upvotes`}
+                        />
+                      </Grid>
+                    ))
+                : fallbackMemes
+                    .slice(startIndex, startIndex + itemsPerPage)
+                    .map((meme) => (
+                      <Grid item xs={12} md={4} key={meme.id}>
+                        <MemeCard
+                          title={meme.title}
+                          imageUrl={meme.imageUrl}
+                          altText={meme.altText}
+                          description={meme.description}
+                        />
+                      </Grid>
+                    ))}
+            </Grid>
+          )}
+
+          {!loading && pageCount > 1 && (
             <Box
               sx={{ display: "flex", justifyContent: "center", mt: 4, mb: 6 }}
             >
@@ -249,7 +297,7 @@ const Memes: React.FC = () => {
           </Typography>
           <Typography variant="body1" paragraph>
             Got a funny meme that helped you through a tough time? Share it with
-            our community! Your humor could brighten someone else's day.
+            our community! Your humor could brighten someone else&apos;s day.
           </Typography>
           <Button variant="contained" color="secondary" disabled>
             Upload Meme (Coming Soon)
