@@ -10,10 +10,7 @@ import {
   ListItem,
   useTheme,
   Chip,
-  Collapse,
-  Grow,
   Tooltip,
-  Divider,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import FaceIcon from "@mui/icons-material/Face";

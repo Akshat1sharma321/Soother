@@ -10,7 +10,6 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Avatar,
   Card,
   CardContent,
   CardMedia,

@@ -6,7 +6,6 @@ import {
   Grid,
   Card,
   CardContent,
-  Avatar,
   Button,
   Divider,
   TextField,
